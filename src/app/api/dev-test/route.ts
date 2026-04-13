@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
-
-const GENERATION_MODEL = "gemini-2.5-flash-image";
+import { IMAGE_MODEL } from "@/lib/ai/gemini-provider";
 
 export async function POST(req: NextRequest) {
   try {
@@ -21,8 +20,10 @@ export async function POST(req: NextRequest) {
 
     const client = new GoogleGenAI({ apiKey });
 
+    console.log(`[dev-test] Sending request — model: ${IMAGE_MODEL}`);
+
     const response = await client.models.generateContent({
-      model: GENERATION_MODEL,
+      model: IMAGE_MODEL,
       contents: [
         {
           role: "user",

@@ -6,16 +6,23 @@ import { buildPrompt } from "./prompt-builder";
 // Gemini provider — all AI calls live here
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── Active model config ───────────────────────────────────────────────────────
+// Change IMAGE_MODEL here to switch the image generation model globally.
+// This is the single place that controls which model is used for all image output.
+export const IMAGE_MODEL = "gemini-3-pro-image-preview";
+const TEXT_MODEL         = "gemini-2.0-flash";
+
+// Log active model once when this module is first loaded (server startup)
+console.log("Active image model:", IMAGE_MODEL);
+
+const MAX_RETRIES    = 2;
+const RETRY_DELAY_MS = 3000;
+
 function getClient(): GoogleGenAI {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
   return new GoogleGenAI({ apiKey });
 }
-
-const GENERATION_MODEL = "gemini-2.5-flash-image";
-const TEXT_MODEL       = "gemini-2.0-flash";
-const MAX_RETRIES      = 2;
-const RETRY_DELAY_MS   = 3000;
 
 async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -34,10 +41,12 @@ export async function generateCreativeVariant(
   const prompt = buildPrompt(ctx);
   let lastError: Error | null = null;
 
+  console.log(`[gemini-provider] generateCreativeVariant — model: ${IMAGE_MODEL}`);
+
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const response = await client.models.generateContent({
-        model: GENERATION_MODEL,
+        model: IMAGE_MODEL,
         contents: [
           {
             role: "user",
