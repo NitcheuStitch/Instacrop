@@ -33,6 +33,14 @@ export type JobStatus =
 
 export type OutputStatus = "pending" | "generating" | "done" | "failed";
 
+// Bounding box in canvas display coordinates, plus original image scale factors
+export type SelectionBounds = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Job settings (sent from frontend → backend)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -46,6 +54,9 @@ export type GenerationSettings = {
   useOriginalBackground: boolean;
   preserveComposition: boolean;
   adMood?: string;
+  // Product selection
+  useProductCutout: boolean;
+  productCutoutUrl?: string; // signed URL of the cropped product image
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -133,20 +144,55 @@ export type JobWithOutputs = DbJob & {
 // AI provider types
 // ─────────────────────────────────────────────────────────────────────────────
 
+export type ProductAnalysis = {
+  category: string;          // e.g. "supplement bottle", "food product", "perfume"
+  suggestedScenes: string[]; // e.g. ["wellness studio", "clean white shelf"]
+  colorTone: string;         // e.g. "warm earthy tones", "clean white and gold"
+  adStyle: string;           // e.g. "health & wellness", "luxury lifestyle"
+};
+
 export type PromptContext = {
-  productType: string;
-  sourceImageDescription: string;
   outputFormat: OutputFormat;
   mode: GenerationMode;
   backgroundStyle: BackgroundStyle;
   variantName: string;
   adMood?: string;
   preserveComposition: boolean;
-  hasIsolatedProduct: boolean;
+  // Product info
+  useProductCutout: boolean;  // true = image IS the isolated product
+  productAnalysis?: ProductAnalysis;
+  // Set to true on validation-failure retries to apply stricter anti-artifact rules
+  strictMode?: boolean;
 };
 
 export type GenerativeResult = {
   imageBase64: string;
   mimeType: string;
   promptUsed: string;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Artifact detection types
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ArtifactType =
+  | "watermark"
+  | "logo"
+  | "overlay"
+  | "icon"
+  | "text"
+  | "ui_element";
+
+export type ArtifactRegion = {
+  x: number;           // 0–100 percentage of image width
+  y: number;           // 0–100 percentage of image height
+  width: number;       // 0–100 percentage of image width
+  height: number;      // 0–100 percentage of image height
+  type: ArtifactType;
+  description?: string;
+};
+
+export type ArtifactScanResult = {
+  regions: ArtifactRegion[];
+  cleaned: boolean;    // true if any regions were masked out
 };

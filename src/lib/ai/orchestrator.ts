@@ -1,5 +1,11 @@
-import { generateCreativeVariant, analyzeProductImage } from "./gemini-provider";
+import {
+  generateCreativeVariant,
+  analyzeProductCategory,
+  detectArtifactRegions,
+  validateImageOutput,
+} from "./gemini-provider";
 import { getVariantNames } from "./prompt-builder";
+import { removeArtifactRegions } from "@/lib/image/preprocessor";
 import { uploadGeneratedOutput, downloadFileAsBuffer } from "@/lib/storage";
 import {
   createOutputRecord,
@@ -7,11 +13,11 @@ import {
   updateJobStatus,
   logGeneration,
 } from "@/lib/db/jobs";
-import type { GenerationSettings, PromptContext } from "@/types";
+import type { ArtifactRegion, GenerationSettings, ProductAnalysis, PromptContext } from "@/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Generation orchestrator
-// Loops through formats × variants, calls Gemini, saves results.
+// Loops formats × variants, resolves source image, calls Gemini, saves results.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function runGenerationJob(params: {
@@ -24,19 +30,63 @@ export async function runGenerationJob(params: {
   await updateJobStatus(jobId, "processing");
 
   try {
-    // Fetch the source image once
-    const sourceBuffer = await downloadFileAsBuffer(originalImageUrl);
-    const sourceBase64 = sourceBuffer.toString("base64");
-    const sourceMimeType = detectMimeType(originalImageUrl);
+    // ── Resolve source image ────────────────────────────────────────────────
+    // If user selected a product cutout, use that as the generation source.
+    // Otherwise fall back to the original image.
+    const useProductCutout =
+      settings.useProductCutout && !!settings.productCutoutUrl;
 
-    // Analyze the product to improve prompts
-    let productDescription = "Product image provided.";
+    const sourceUrl = useProductCutout
+      ? settings.productCutoutUrl!
+      : originalImageUrl;
+
+    const rawSourceBuffer = await downloadFileAsBuffer(sourceUrl);
+    const sourceMimeType  = detectMimeType(sourceUrl);
+
+    // ── Artifact detection + preprocessing ─────────────────────────────────
+    // Scan the source image for UI overlays / watermarks and blur them out.
+    // Non-fatal — if detection fails we proceed with the original buffer.
+    let sourceBuffer  = rawSourceBuffer;
+    let artifactRegions: ArtifactRegion[] = [];
     try {
-      productDescription = await analyzeProductImage(sourceBase64, sourceMimeType);
-    } catch {
-      // Non-fatal — use fallback description
+      const rawBase64 = rawSourceBuffer.toString("base64");
+      artifactRegions = await detectArtifactRegions(rawBase64, sourceMimeType);
+
+      if (artifactRegions.length > 0) {
+        sourceBuffer = await removeArtifactRegions(rawSourceBuffer, artifactRegions);
+        await logGeneration({
+          jobId,
+          provider: "gemini",
+          requestType: "artifact_removal",
+          status: "success",
+          metadata: { artifactCount: artifactRegions.length, regions: artifactRegions },
+        });
+      }
+    } catch (err) {
+      console.warn(`[orchestrator] artifact detection failed for job ${jobId}:`, err);
+      sourceBuffer = rawSourceBuffer;
     }
 
+    const sourceBase64 = sourceBuffer.toString("base64");
+
+    // ── Product analysis ────────────────────────────────────────────────────
+    // Analyse to detect category, tone, and suggested scenes.
+    // Non-fatal — falls back to generic values inside analyzeProductCategory.
+    let productAnalysis: ProductAnalysis | undefined;
+    try {
+      productAnalysis = await analyzeProductCategory(sourceBase64, sourceMimeType);
+      await logGeneration({
+        jobId,
+        provider: "gemini",
+        requestType: "product_analysis",
+        status: "success",
+        metadata: { productAnalysis },
+      });
+    } catch (err) {
+      console.warn(`[orchestrator] product analysis failed for job ${jobId}:`, err);
+    }
+
+    // ── Generate formats × variants ─────────────────────────────────────────
     const variantNames = getVariantNames(settings.variantCount);
     let allSucceeded = true;
 
@@ -54,19 +104,41 @@ export async function runGenerationJob(params: {
         await updateOutputRecord(outputRecord.id, { status: "generating" });
 
         const ctx: PromptContext = {
-          productType: "product",
-          sourceImageDescription: productDescription,
           outputFormat: format,
           mode: settings.mode,
           backgroundStyle: settings.backgroundStyle,
           variantName,
           adMood: settings.adMood,
           preserveComposition: settings.preserveComposition,
-          hasIsolatedProduct: settings.isolateProduct,
+          useProductCutout,
+          productAnalysis,
         };
 
         try {
-          const result = await generateCreativeVariant(ctx, sourceBase64, sourceMimeType);
+          let result = await generateCreativeVariant(ctx, sourceBase64, sourceMimeType);
+
+          // ── Output validation ─────────────────────────────────────────────
+          // Check the generated image for leftover artifacts or quality issues.
+          // If problems are found, retry once with a stricter prompt addendum.
+          try {
+            const validation = await validateImageOutput(result.imageBase64, result.mimeType);
+            if (!validation.clean && validation.issues.length > 0) {
+              console.warn(`[orchestrator] output validation failed for ${outputRecord.id}:`, validation.issues);
+              await logGeneration({
+                jobId,
+                provider: "gemini",
+                requestType: "output_validation",
+                status: "error",
+                errorMessage: validation.issues.join("; "),
+                metadata: { formatId: format.id, variantName },
+              });
+              // Retry with strict anti-artifact mode
+              const strictCtx: PromptContext = { ...ctx, strictMode: true };
+              result = await generateCreativeVariant(strictCtx, sourceBase64, sourceMimeType);
+            }
+          } catch {
+            // Validation failure is non-fatal — keep the original result
+          }
 
           const imageBuffer = Buffer.from(result.imageBase64, "base64");
           const { url: outputUrl } = await uploadGeneratedOutput({
@@ -87,18 +159,13 @@ export async function runGenerationJob(params: {
             provider: "gemini",
             requestType: "generate_creative_variant",
             status: "success",
-            metadata: {
-              formatId: format.id,
-              variantName,
-              mode: settings.mode,
-            },
+            metadata: { formatId: format.id, variantName, mode: settings.mode, useProductCutout },
           });
         } catch (err) {
           allSucceeded = false;
           const errorMessage = err instanceof Error ? err.message : String(err);
 
           await updateOutputRecord(outputRecord.id, { status: "failed" });
-
           await logGeneration({
             jobId,
             provider: "gemini",
@@ -127,8 +194,8 @@ export async function runGenerationJob(params: {
 }
 
 function detectMimeType(url: string): string {
-  const lower = url.toLowerCase();
-  if (lower.endsWith(".png")) return "image/png";
-  if (lower.endsWith(".webp")) return "image/webp";
+  const pathname = url.split("?")[0].toLowerCase();
+  if (pathname.endsWith(".png"))  return "image/png";
+  if (pathname.endsWith(".webp")) return "image/webp";
   return "image/jpeg";
 }

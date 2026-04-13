@@ -3,9 +3,11 @@
 import type { GenerationMode, BackgroundStyle, GenerationSettings } from "@/types";
 import { cn } from "@/lib/utils";
 
+type CoreSettings = Omit<GenerationSettings, "formats" | "useProductCutout" | "productCutoutUrl">;
+
 interface GenerationSettingsProps {
-  settings: Omit<GenerationSettings, "formats">;
-  onChange: (settings: Omit<GenerationSettings, "formats">) => void;
+  settings: CoreSettings;
+  onChange: (settings: CoreSettings) => void;
 }
 
 const MODES: { id: GenerationMode; label: string; description: string }[] = [

@@ -3,7 +3,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { use } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { Navbar } from "@/components/layout/navbar";
 import { OutputCard } from "@/components/results/output-card";
 import { Button } from "@/components/ui/button";
@@ -41,10 +40,11 @@ export default function ResultsPage({
     fetchJob();
   }, [fetchJob]);
 
-  // Poll while job is processing
+  // Poll while job is still running
   useEffect(() => {
     if (!job) return;
-    if (job.status === "completed" || job.status === "failed") return;
+    const terminal = ["completed", "failed", "partial"];
+    if (terminal.includes(job.status)) return;
 
     const timer = setInterval(fetchJob, POLL_INTERVAL_MS);
     return () => clearInterval(timer);
@@ -158,22 +158,40 @@ export default function ResultsPage({
           </div>
 
           {/* Source image + settings summary */}
-          <div className="grid md:grid-cols-[200px_1fr] gap-6 mb-10 p-5 rounded-2xl border border-white/8 bg-neutral-900/30">
-            <div className="relative aspect-square rounded-xl overflow-hidden bg-neutral-800">
-              <Image
-                src={job.original_image_url}
-                alt="Source image"
-                fill
-                className="object-contain"
-              />
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 content-start">
-              <Info label="Mode" value={job.settings_json.mode.replace(/_/g, " ")} />
-              <Info label="Style" value={job.settings_json.backgroundStyle} />
-              <Info label="Variants" value={String(job.settings_json.variantCount)} />
-              <Info label="Formats" value={String(job.settings_json.formats.length)} />
-              <Info label="Total outputs" value={String(totalCount)} />
-              <Info label="Status" value={job.status} />
+          <div className="p-5 rounded-2xl border border-white/8 bg-neutral-900/30 mb-10">
+            <div className="grid md:grid-cols-[auto_1fr] gap-6">
+              {/* Images: original + cutout if used */}
+              <div className="flex gap-3">
+                <div>
+                  <p className="text-xs text-neutral-600 mb-1.5">Original</p>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={job.original_image_url}
+                    alt="Source image"
+                    className="h-24 w-24 object-contain rounded-xl border border-white/10 bg-neutral-800"
+                  />
+                </div>
+                {job.settings_json.useProductCutout && job.settings_json.productCutoutUrl && (
+                  <div>
+                    <p className="text-xs text-brand-400 mb-1.5">Product used</p>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={job.settings_json.productCutoutUrl}
+                      alt="Product cutout"
+                      className="h-24 w-24 object-contain rounded-xl border border-brand-500/30 bg-neutral-800"
+                    />
+                  </div>
+                )}
+              </div>
+              {/* Settings */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 content-start">
+                <Info label="Source" value={job.settings_json.useProductCutout ? "Product cutout" : "Full image"} />
+                <Info label="Mode" value={job.settings_json.mode.replace(/_/g, " ")} />
+                <Info label="Style" value={job.settings_json.backgroundStyle} />
+                <Info label="Variants" value={String(job.settings_json.variantCount)} />
+                <Info label="Formats" value={String(job.settings_json.formats.length)} />
+                <Info label="Status" value={job.status} />
+              </div>
             </div>
           </div>
 

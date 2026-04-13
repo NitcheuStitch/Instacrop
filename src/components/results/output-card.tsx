@@ -1,10 +1,8 @@
 "use client";
 
-import Image from "next/image";
-import { Download, RefreshCw, Loader2, AlertCircle } from "lucide-react";
+import { Download, Loader2, AlertCircle } from "lucide-react";
 import type { DbOutput } from "@/types";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 
 interface OutputCardProps {
   output: DbOutput;
@@ -21,22 +19,22 @@ export function OutputCard({ output }: OutputCardProps) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${output.format_name}_${output.variant_name}_${output.width}x${output.height}.jpg`;
+    a.download = `${output.format_name}_${output.variant_name}_${output.width}x${output.height}.png`;
     a.click();
     URL.revokeObjectURL(url);
   }
 
   return (
     <div className="rounded-xl border border-white/10 bg-neutral-900 overflow-hidden group">
-      {/* Image area */}
+      {/* Image area with correct aspect ratio */}
       <div className="relative w-full bg-neutral-800" style={{ paddingBottom }}>
         {output.status === "done" && output.output_url ? (
           <>
-            <Image
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
               src={output.output_url}
               alt={`${output.format_name} ${output.variant_name}`}
-              fill
-              className="object-cover"
+              className="absolute inset-0 w-full h-full object-cover"
             />
             <button
               onClick={handleDownload}
@@ -59,13 +57,11 @@ export function OutputCard({ output }: OutputCardProps) {
       </div>
 
       {/* Info */}
-      <div className="p-3 space-y-2">
+      <div className="p-3 space-y-1.5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <p className="text-sm font-medium text-neutral-100 truncate">{output.format_name}</p>
-            <p className="text-xs text-neutral-500">
-              {output.width}×{output.height}
-            </p>
+            <p className="text-xs text-neutral-500">{output.width}×{output.height}</p>
           </div>
           <StatusBadge status={output.status} />
         </div>

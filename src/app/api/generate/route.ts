@@ -27,14 +27,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // Kick off generation async — respond immediately so the UI can poll
-  runGenerationJob({
-    jobId: job.id,
-    originalImageUrl: job.original_image_url,
-    settings: job.settings_json,
-  }).catch((err) => {
-    console.error(`Generation job ${jobId} failed:`, err);
-  });
+  try {
+    // Kick off generation async — respond immediately so the UI can poll
+    runGenerationJob({
+      jobId: job.id,
+      originalImageUrl: job.original_image_url,
+      settings: job.settings_json,
+    }).catch((err) => {
+      console.error(`Generation job ${jobId} failed:`, err);
+    });
 
-  return NextResponse.json({ status: "started" });
+    return NextResponse.json({ status: "started" });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to start generation";
+    console.error("[/api/generate]", message);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

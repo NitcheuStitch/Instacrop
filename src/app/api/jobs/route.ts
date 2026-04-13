@@ -17,14 +17,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  const job = await createJob({
-    userId: user.id,
-    originalImageUrl: body.originalImageUrl,
-    originalFilename: body.originalFilename,
-    settings: body.settings,
-  });
-
-  return NextResponse.json({ jobId: job.id });
+  try {
+    const job = await createJob({
+      userId: user.id,
+      originalImageUrl: body.originalImageUrl,
+      originalFilename: body.originalFilename,
+      settings: body.settings,
+    });
+    return NextResponse.json({ jobId: job.id });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to create job";
+    console.error("[/api/jobs POST]", message);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
 
 export async function GET() {

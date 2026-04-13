@@ -34,15 +34,21 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const arrayBuffer = await file.arrayBuffer();
-  const fileBuffer = Buffer.from(arrayBuffer);
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const fileBuffer = Buffer.from(arrayBuffer);
 
-  const { url, path } = await uploadOriginalImage({
-    fileBuffer,
-    filename: file.name,
-    mimeType: file.type,
-    userId: user.id,
-  });
+    const { url, path } = await uploadOriginalImage({
+      fileBuffer,
+      filename: file.name,
+      mimeType: file.type,
+      userId: user.id,
+    });
 
-  return NextResponse.json({ url, path, filename: file.name });
+    return NextResponse.json({ url, path, filename: file.name });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Upload failed";
+    console.error("[/api/upload]", message);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
