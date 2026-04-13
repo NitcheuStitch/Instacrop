@@ -36,6 +36,11 @@ export function Navbar({ showAuth = true }: NavbarProps) {
               <Link href="/dashboard">
                 <Button variant="ghost" size="sm">Dashboard</Button>
               </Link>
+              <Link href="/dev">
+                <Button variant="ghost" size="sm" className="text-amber-400 hover:text-amber-300">
+                  Dev
+                </Button>
+              </Link>
               <Button variant="secondary" size="sm" onClick={handleSignOut}>
                 Sign out
               </Button>

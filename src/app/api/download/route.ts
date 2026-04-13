@@ -32,12 +32,18 @@ export async function POST(req: NextRequest) {
   archive.pipe(passThrough as unknown as Writable);
 
   for (const output of completedOutputs) {
-    const res = await fetch(output.output_url!);
-    if (!res.ok) continue;
-    const buffer = Buffer.from(await res.arrayBuffer());
-    const ext = output.output_url!.split(".").pop() ?? "jpg";
-    const filename = `${output.format_name.replace(/\s+/g, "_")}_${output.variant_name.replace(/\s+/g, "_")}_${output.width}x${output.height}.${ext}`;
-    archive.append(buffer, { name: filename });
+    try {
+      const res = await fetch(output.output_url!);
+      if (!res.ok) continue;
+      const buffer = Buffer.from(await res.arrayBuffer());
+      // Strip query params before extracting extension (Supabase signed URLs include ?token=...)
+      const pathname = new URL(output.output_url!).pathname;
+      const ext = pathname.split(".").pop() ?? "jpg";
+      const filename = `${output.format_name.replace(/\s+/g, "_")}_${output.variant_name.replace(/\s+/g, "_")}_${output.width}x${output.height}.${ext}`;
+      archive.append(buffer, { name: filename });
+    } catch {
+      continue;
+    }
   }
 
   archive.finalize();

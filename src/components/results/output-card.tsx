@@ -14,14 +14,19 @@ export function OutputCard({ output }: OutputCardProps) {
 
   async function handleDownload() {
     if (!output.output_url) return;
-    const res = await fetch(output.output_url);
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${output.format_name}_${output.variant_name}_${output.width}x${output.height}.png`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const res = await fetch(output.output_url);
+      if (!res.ok) throw new Error("Failed to fetch image");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${output.format_name}_${output.variant_name}_${output.width}x${output.height}.png`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      // Download failed silently — URL may have expired
+    }
   }
 
   return (
